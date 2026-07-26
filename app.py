@@ -15,6 +15,25 @@ feature_names = model_package['feature_names']
 with open('models/scaler.pkl','rb') as f:
     scaler = pickle.load(f)
 
+explainer = shap.TreeExplainer(model)
+
+if 'prediction_result' not in st.session_state:
+    st.session_state.prediction_result = None
+
+def reset():
+    defaults = {
+        'age': 30, 'monthly_income': 5000, 'distance_from_home': 5,
+        'total_working_years': 5, 'years_at_company': 3,
+        'department': "Sales", 'job_role': "Sales Executive",
+        'marital_status': "Single", 'education_field': "Life Sciences",
+        'business_travel': "Non-Travel", 'overtime': "No",
+        'job_satisfaction': 3, 'work_life_balance': 3,
+        'environment_satisfaction': 3, 'stock_option_level': 1,
+    }
+    for key, value in defaults.items():
+        st.session_state[key] = value
+    st.session_state.prediction_result = None
+
 st.set_page_config(page_title = "Employee Attrition Predictor")
 st.title("Employee Attrition Predictor")
 st.write("Predict employee attrition risk and understand the key drivers behind each prediction.")
@@ -25,36 +44,43 @@ st.header("Employee Details")
 col1 , col2 , col3 = st.columns(3)
 
 with col1:
-    age = st.slider("Age", 18, 60, 30)
-    monthly_income = st.number_input("Monthly Income", 1000, 20000, 5000)
-    distance_from_home = st.slider("Distance from Home (km)", 1, 30, 5)
-    total_working_years = st.slider("Total Working Years", 0, 40, 5)
-    years_at_company = st.slider("Years at Company", 0, 40, 3)
+    age = st.slider("Age", 18, 60, 30, key = 'age')
+    monthly_income = st.number_input("Monthly Income", 1000, 20000, 5000, key = 'monthly_income')
+    distance_from_home = st.slider("Distance from Home (km)", 1, 30, 5, key = 'distance_from_home')
+    total_working_years = st.slider("Total Working Years", 0, 40, 5, key = 'total_working_years')
+    years_at_company = st.slider("Years at Company", 0, 40, 3, key = 'years_at_company')
 
 with col2:
-    department = st.selectbox("Department", ["Sales", "Research & Development", "Human Resources"])
+    department = st.selectbox("Department", ["Sales", "Research & Development", "Human Resources"], key = 'department')
     job_role = st.selectbox("Job Role", [
         "Sales Executive", "Research Scientist", "Laboratory Technician",
         "Manufacturing Director", "Healthcare Representative", "Manager",
         "Sales Representative", "Research Director", "Human Resources"
-    ])
-    marital_status = st.selectbox("Marital Status", ["Single", "Married", "Divorced"])
+    ], key = 'job_role')
+    marital_status = st.selectbox("Marital Status", ["Single", "Married", "Divorced"], key = 'marital_status')
     education_field = st.selectbox("Education Field", [
         "Life Sciences", "Medical", "Marketing", "Technical Degree", "Other", "Human Resources"
-    ])
-    business_travel = st.selectbox("Business Travel", ["Non-Travel", "Travel_Rarely", "Travel_Frequently"])
+    ], key = 'education_field')
+    business_travel = st.selectbox("Business Travel", ["Non-Travel", "Travel_Rarely", "Travel_Frequently"], key = 'business_travel')
 
 with col3:
-    overtime = st.selectbox("OverTime", ["No", "Yes"])
-    job_satisfaction = st.slider("Job Satisfaction (1-4)", 1, 4, 3)
-    work_life_balance = st.slider("Work Life Balance (1-4)", 1, 4, 3)
-    environment_satisfaction = st.slider("Environment Satisfaction (1-4)", 1, 4, 3)
-    stock_option_level = st.slider("Stock Option Level (0-3)", 0, 3, 1)
+    overtime = st.selectbox("OverTime", ["No", "Yes"], key = 'overtime')
+    job_satisfaction = st.slider("Job Satisfaction (1-4)", 1, 4, 3, key = 'job_satisfaction')
+    work_life_balance = st.slider("Work Life Balance (1-4)", 1, 4, 3, key = 'work_life_balance')
+    environment_satisfaction = st.slider("Environment Satisfaction (1-4)", 1, 4, 3, key = 'environment_satisfaction')
+    stock_option_level = st.slider("Stock Option Level (0-3)", 0, 3, 1, key = 'stock_option_level')
 
 
 st.header("Prediction")
 
-if st.button("Predict Attrition Risk"):
+col_predict, col_reset = st.columns([1,1])
+
+with col_predict:
+    predict_clicked = st.button("Predict Attrition Risk")
+with col_reset:
+    st.button("Reset", on_click = reset)
+
+if predict_clicked:
      # Step A: Start with default values for all 43 features
     input_dict = {
         'Age': age,
@@ -119,10 +145,36 @@ if st.button("Predict Attrition Risk"):
     probability = model.predict_proba(input_scaled_df)[:, 1][0]
     prediction = 1 if probability >= threshold else 0
 
+    shap_values_single = explainer.shap_values(input_scaled_df)
+
     # Step G: Display result
+    st.session_state.prediction_result = (prediction, probability, shap_values_single, input_scaled_df)
+
+if st.session_state.prediction_result is not None:
+    prediction, probability, shap_values_single, input_scaled_df = st.session_state.prediction_result
     st.subheader("Result")
     if prediction == 1:
         st.error(f"⚠️ High Attrition Risk — Predicted probability: {probability:.1%}")
     else:
         st.success(f"✅ Low Attrition Risk — Predicted probability: {probability:.1%}")
+
+    st.subheader("Why this prediction? (SHAP Explanation)")
+    fig, ax = plt.subplots(figsize=(10,6))
+    shap.plots.waterfall(
+        shap.Explanation(
+            values = shap_values_single[0],
+            base_values = explainer.expected_value,
+            data = input_scaled_df.iloc[0],
+            feature_names = feature_names
+        ),
+        show = False
+    )
+    st.pyplot(fig)
+
+
+
+
+
+
+
 
