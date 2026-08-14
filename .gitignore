@@ -3,4 +3,7 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 WA_Fn-UseC_-HR-Employee-Attrition.csv
+models/processed_data.pkl
+
+
 
